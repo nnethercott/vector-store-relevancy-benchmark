@@ -5,11 +5,13 @@ mod dataset;
 mod qdrant_bench;
 pub mod scenarios;
 
-use std::fmt;
+use core::fmt;
 
 use arroy::distances::*;
+use arroy::internals::UnalignedVector;
 use arroy::ItemId;
 pub use dataset::*;
+use fast_distances::hamming;
 use qdrant_client::qdrant::quantization_config;
 
 pub const RNG_SEED: u64 = 38;
@@ -55,6 +57,28 @@ arroy_distance!(Euclidean => real: euclidean, qdrant: Euclid, bq: false);
 arroy_distance!(BinaryQuantizedManhattan => real: manhattan, qdrant: Manhattan, bq: true);
 arroy_distance!(Manhattan => real: manhattan, qdrant: Manhattan, bq: false);
 // arroy_distance!(DotProduct => real: dot, qdrant: Dot);
+impl Distance for Hamming {
+    const BINARY_QUANTIZED: bool = false;
+    const QDRANT_DISTANCE: qdrant_client::qdrant::Distance =
+        qdrant_client::qdrant::Distance::Manhattan;
+    type ArroyDistance = Hamming;
+
+    fn name() -> &'static str {
+        stringify!($distance)
+    }
+    fn qdrant_quantization_config() -> quantization_config::Quantization {
+        qdrant_client::qdrant::BinaryQuantization::default().into()
+    }
+    fn real_distance(a: &[f32], b: &[f32]) -> f32 {
+        // manually quantize
+        let a: Vec<f32> = a.iter().map(|&val| if val>0.0 {1.0} else {0.0}).collect();
+        let b: Vec<f32> = b.iter().map(|&val| if val>0.0 {1.0} else {0.0}).collect();
+
+        let a = ndarray::aview1(&a);
+        let b = ndarray::aview1(&b);
+        fast_distances::hamming(&a, &b) as f32
+    }
+}
 
 fn partial_sort_by<'a, D: crate::Distance>(
     mut vectors: impl Iterator<Item = (ItemId, &'a [f32])>,

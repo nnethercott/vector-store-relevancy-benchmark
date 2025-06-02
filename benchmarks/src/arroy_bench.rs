@@ -281,6 +281,7 @@ fn load_into_arroy<D: arroy::Distance>(
         if verbose {
             builder.progress(|progress| println!("    {progress:?}"));
         }
+        // builder.n_trees(1);
         builder.available_memory(memory).build(wtxn).unwrap();
     }
     candidates

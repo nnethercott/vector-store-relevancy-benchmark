@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-use arroy::distances::Cosine;
+use arroy::distances::{BinaryQuantizedCosine, Cosine, Hamming};
 use benchmarks::scenarios::ScenarioSearch;
 use benchmarks::{arroy_bench, scenarios, MatLEView, RNG_SEED};
 use byte_unit::Byte;
@@ -135,7 +135,7 @@ fn main() {
                 .map(|(id, target)| {
                     let mut points = points.clone();
                     points.par_sort_unstable_by_key(|(_, v)| {
-                        OrderedFloat(benchmarks::distance::<Cosine>(target, v))
+                        OrderedFloat(benchmarks::distance::<Hamming>(target, v))
                     });
 
                     // We collect the different filtered versions here.
@@ -201,7 +201,7 @@ fn main() {
                 },
                 scenarios::ScenarioContender::Arroy => match distance {
                     scenarios::ScenarioDistance::Cosine => {
-                        arroy_bench::prepare_and_run::<Cosine, _>(
+                        arroy_bench::prepare_and_run::<Hamming, _>(
                             &points,
                             *number_of_chunks,
                             memory,
