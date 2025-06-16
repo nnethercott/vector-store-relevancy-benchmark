@@ -72,6 +72,7 @@ pub fn run_scenarios<D: Distance>(
     for ScenarioSearch { oversampling, filtering } in search {
         let mut time_to_search = Duration::default();
         let mut recalls = Vec::new();
+
         for &number_fetched in recall_tested {
             let (correctly_retrieved, duration) = queries
                 .par_iter()
@@ -124,12 +125,50 @@ pub fn run_scenarios<D: Distance>(
             recalls.push(Recall(recall));
         }
 
+        // ndgc
+        const N: usize = 50;
+        let mut ndcg: f32 = queries
+            .par_iter()
+            .map(|(&id, _target, relevants)| {
+                let rtxn = env.read_txn().unwrap();
+                let reader = arroy::Reader::open(&rtxn, 0, database).unwrap();
+
+                let (candidates, relevants) = &relevants[filtering];
+                let relevants = relevants.get(..N).unwrap_or(relevants);
+
+                let mut nns = reader.nns(N);
+                if let Some(oversampling) = oversampling.to_non_zero_usize() {
+                    nns.oversampling(oversampling);
+                }
+                if let Some(candidates) = candidates.as_ref() {
+                    nns.candidates(candidates);
+                }
+                let arroy_answer = nns.by_item(&rtxn, id).unwrap().unwrap();
+
+                let relevant = RoaringBitmap::from_iter(relevants);
+                let dcg: f32 = arroy_answer
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (id, _))| {
+                        let rel = if relevant.contains(*id) { 1.0 } else { 0.0 };
+                        let denom = (i + 2) as f32; // rank starts at 1, so i+2 for log2(rank+1)
+                        (2f32.powf(rel) - 1.0) / denom.log2()
+                    })
+                    .sum();
+                let idcg: f32 = (0..relevant.len()).map(|i| 1.0 / ((i + 2) as f32).log2()).sum();
+                dcg / idcg
+            })
+            .sum();
+
+        ndcg /= queries.len() as f32;
+
         let filtered_percentage = filtering.to_ratio_f32() * 100.0;
         println!(
             "[arroy]  {distance:16?} {oversampling}: {recalls:?}, \
                                     searched for: {time_to_search:02.2?}, \
                                     searched in {filtered_percentage:#.2}%"
         );
+        println!("[arroy]  NDCG@50: {:?}", Recall(ndcg));
     }
 }
 
@@ -281,6 +320,7 @@ fn load_into_arroy<D: arroy::Distance>(
         if verbose {
             builder.progress(|progress| println!("    {progress:?}"));
         }
+        // builder.n_trees(128);
         builder.available_memory(memory).build(wtxn).unwrap();
     }
     candidates
