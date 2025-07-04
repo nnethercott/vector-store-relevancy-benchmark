@@ -1,45 +1,36 @@
 #![allow(clippy::type_complexity)]
 
-pub mod arroy_bench;
+pub mod hannoy_bench;
 mod dataset;
-mod qdrant_bench;
 pub mod scenarios;
 
 use std::fmt;
 use std::time::Instant;
 
-use arroy::distances::*;
+use hannoy::distances::*;
 use byte_unit::rust_decimal::Decimal;
 use byte_unit::{Byte, Unit, UnitType};
 pub use dataset::*;
-use qdrant_client::qdrant::quantization_config;
 
 pub const RNG_SEED: u64 = 38;
 
 /// A generalist distance trait that contains the informations required to configure every engine
 pub trait Distance {
     const BINARY_QUANTIZED: bool;
-    const QDRANT_DISTANCE: qdrant_client::qdrant::Distance;
-    type ArroyDistance: arroy::Distance;
+    type HannoyDistance: hannoy::Distance;
 
     fn name() -> &'static str;
-    fn qdrant_quantization_config() -> quantization_config::Quantization;
     fn real_distance(a: &[f32], b: &[f32]) -> f32;
 }
 
-macro_rules! arroy_distance {
-    ($distance:ty => real: $real:ident, qdrant: $qdrant:ident, bq: $bq:expr) => {
+macro_rules! hannoy_distance {
+    ($distance:ty => real: $real:ident, bq: $bq:expr) => {
         impl Distance for $distance {
             const BINARY_QUANTIZED: bool = $bq;
-            const QDRANT_DISTANCE: qdrant_client::qdrant::Distance =
-                qdrant_client::qdrant::Distance::$qdrant;
-            type ArroyDistance = $distance;
+            type HannoyDistance = $distance;
 
             fn name() -> &'static str {
                 stringify!($distance)
-            }
-            fn qdrant_quantization_config() -> quantization_config::Quantization {
-                qdrant_client::qdrant::BinaryQuantization::default().into()
             }
             fn real_distance(a: &[f32], b: &[f32]) -> f32 {
                 let a = ndarray::aview1(a);
@@ -50,13 +41,9 @@ macro_rules! arroy_distance {
     };
 }
 
-arroy_distance!(BinaryQuantizedCosine => real: cosine, qdrant: Cosine, bq: true);
-arroy_distance!(Cosine =>  real: cosine, qdrant: Cosine, bq: false);
-arroy_distance!(BinaryQuantizedEuclidean => real: euclidean, qdrant: Euclid, bq: true);
-arroy_distance!(Euclidean => real: euclidean, qdrant: Euclid, bq: false);
-arroy_distance!(BinaryQuantizedManhattan => real: manhattan, qdrant: Manhattan, bq: true);
-arroy_distance!(Manhattan => real: manhattan, qdrant: Manhattan, bq: false);
-// arroy_distance!(DotProduct => real: dot, qdrant: Dot);
+hannoy_distance!(BinaryQuantizedCosine => real: cosine, bq: true);
+hannoy_distance!(Cosine =>  real: cosine,  bq: false);
+hannoy_distance!(Euclidean => real: euclidean, bq: false);
 
 pub fn distance<D: crate::Distance>(left: &[f32], right: &[f32]) -> f32 {
     D::real_distance(left, right)
@@ -93,7 +80,6 @@ pub struct IndexingMetrics {
     build_durations: Vec<(Instant, Instant)>,
     nb_vectors: Vec<usize>,
     database_size: Vec<usize>,
-    nb_trees: Vec<usize>,
 }
 
 impl IndexingMetrics {
@@ -105,7 +91,6 @@ impl IndexingMetrics {
             build_durations: Vec::new(),
             nb_vectors: Vec::new(),
             database_size: Vec::new(),
-            nb_trees: Vec::new(),
         }
     }
 
@@ -131,9 +116,6 @@ impl IndexingMetrics {
 
     pub fn new_database_size(&mut self, size: usize) {
         self.database_size.push(size);
-    }
-    pub fn new_nb_trees(&mut self, nb_trees: usize) {
-        self.nb_trees.push(nb_trees);
     }
 
     pub fn end(&mut self) {
@@ -176,7 +158,6 @@ impl fmt::Display for IndexingMetrics {
                 format!("{:.2?}", build_end.duration_since(*build_start))
             })
             .collect::<Vec<_>>();
-        let trees = self.nb_trees.iter().map(|v| format!("{}", v)).collect::<Vec<_>>();
         let db_size = self
             .database_size
             .iter()
@@ -195,10 +176,9 @@ impl fmt::Display for IndexingMetrics {
             .iter()
             .zip(insertions.iter())
             .zip(builds.iter())
-            .zip(trees.iter())
             .zip(db_size.iter())
-            .map(|((((v, i), b), t), d)| {
-                [v.len(), i.len(), b.len(), t.len(), d.len()].into_iter().max().unwrap()
+            .map(|(((v, i), b), d)| {
+                [v.len(), i.len(), b.len(), d.len()].into_iter().max().unwrap()
             })
             .collect::<Vec<_>>();
 
@@ -226,15 +206,6 @@ impl fmt::Display for IndexingMetrics {
                 write!(f, ", ")?;
             }
             write!(f, "{build:>max_length$}")?;
-        }
-        writeln!(f, "")?;
-
-        write!(f, "  => Trees:      ")?;
-        for (idx, (nb_trees, max_length)) in trees.iter().zip(max_lengths.iter()).enumerate() {
-            if idx != 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{nb_trees:>max_length$}")?;
         }
         writeln!(f, "")?;
 
