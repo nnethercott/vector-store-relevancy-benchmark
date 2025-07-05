@@ -44,8 +44,8 @@ struct Args {
     ef_construction: usize,
 
     /// hnsw search param
-    #[arg(long, default_value_t = 10)]
-    ef_search: usize,
+    // #[arg(long, default_value_t = 10)]
+    // ef_search: usize,
 
     /// When set to true, will print all the steps it goes through.
     #[arg(long, default_value_t = false)]
@@ -53,7 +53,7 @@ struct Args {
 }
 
 fn main() {
-    let Args { datasets, count, distances, recall_tested, verbose, ef_construction, ef_search } =
+    let Args { datasets, count, distances, recall_tested, verbose, ef_construction } =
         Args::parse();
 
     if verbose {
@@ -90,9 +90,7 @@ fn main() {
         .collect();
 
     let mut previous_dataset = None;
-    for grp in scenaris
-        .linear_group_by(|(da, dia), (db, dib)| da == db && dia == dib)
-    {
+    for grp in scenaris.linear_group_by(|(da, dia), (db, dib)| da == db && dia == dib) {
         let (dataset, distance) = &grp[0];
 
         if previous_dataset != Some(dataset.name()) {
@@ -100,9 +98,7 @@ fn main() {
             dataset.header();
             if dataset.len() != count {
                 let c = count.min(dataset.len());
-                println!(
-                    "\x1b[1m{c}\x1b[0m vectors are used for this measure",
-                );
+                println!("\x1b[1m{c}\x1b[0m vectors are used for this measure",);
             }
         }
 
@@ -138,11 +134,7 @@ fn main() {
                         }
                     });
 
-                    let answer = points
-                        .iter()
-                        .map(|(id, _)| *id)
-                        .take(max)
-                        .collect::<Vec<_>>();
+                    let answer = points.iter().map(|(id, _)| *id).take(max).collect::<Vec<_>>();
 
                     (id, target, answer)
                 })
@@ -164,7 +156,6 @@ fn main() {
                             distance,
                             &queries,
                             &recall_tested,
-                            ef_search,
                             database,
                         );
                     },

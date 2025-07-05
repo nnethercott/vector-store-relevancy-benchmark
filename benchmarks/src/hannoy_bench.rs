@@ -48,10 +48,8 @@ pub fn run_scenarios<D: Distance>(
     env: &heed::Env,
     time_to_index: &IndexingMetrics,
     distance: &ScenarioDistance,
-    // FIXME: won't work
     queries: &[(&u32, &&[f32], Vec<u32>)],
     recall_tested: &[usize],
-    ef_search: usize,
     database: hannoy::Database<D>,
 ) {
     let database_size =
@@ -73,9 +71,16 @@ pub fn run_scenarios<D: Distance>(
 
                 // time the search
                 let now = std::time::Instant::now();
-                let mut nns = reader.nns(number_fetched, ef_search);
+                // FIXME: here's where we'd put a different ef_factor
+                let mut nns = reader.nns(number_fetched, number_fetched);
                 let hannoy_answer = nns.by_vector(&rtxn, target).unwrap();
                 let elapsed = now.elapsed();
+
+                assert!(
+                    hannoy_answer.len() == number_fetched,
+                    "requested: {number_fetched}, returned {}",
+                    hannoy_answer.len()
+                );
 
                 let mut correctly_retrieved = Some(0);
                 for (id, _dist) in hannoy_answer {
@@ -153,4 +158,3 @@ fn load_into_hannoy<D: hannoy::Distance>(
     metrics.end();
     metrics
 }
-
