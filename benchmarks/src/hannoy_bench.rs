@@ -108,7 +108,7 @@ pub fn run_scenarios<D: Distance>(
     }
 
     println!(
-        "[arroy]  {distance:16?}: {recalls:?}, \
+        "[hannoy]  {distance:16?}: {recalls:?}, \
                     searched for: {time_to_search:02.2?}"
     );
 }
