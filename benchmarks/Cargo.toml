@@ -5,9 +5,9 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.86"
-arroy = "0.6.1"
+# arroy = "0.6.1"
 # arroy = { git = "https://github.com/meilisearch/arroy", tag = "main" }
-# arroy = { path = "../../arroy" }
+arroy = { path = "../../arroy" }
 byte-unit = "5.1.4"
 bytemuck = "1.16.1"
 clap = { version = "4.5.18", features = ["derive"] }
