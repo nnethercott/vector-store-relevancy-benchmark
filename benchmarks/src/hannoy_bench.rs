@@ -74,7 +74,7 @@ pub fn run_scenarios<D: Distance>(
                     let relevants = relevants.get(..number_fetched).unwrap_or(relevants);
 
                     let now = std::time::Instant::now();
-                    let mut nns = reader.nns(number_fetched, 800);
+                    let mut nns = reader.nns(number_fetched, number_fetched);
 
                     // NOTE: by_item won't work here
                     let arroy_answer = nns.by_vector(&rtxn, target).unwrap();
