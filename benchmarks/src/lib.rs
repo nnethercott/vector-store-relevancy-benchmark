@@ -1,6 +1,7 @@
 #![allow(clippy::type_complexity)]
 
 pub mod arroy_bench;
+pub mod hannoy_bench;
 mod dataset;
 mod qdrant_bench;
 pub mod scenarios;

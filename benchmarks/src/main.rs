@@ -238,7 +238,33 @@ fn main() {
         println!("Starting indexing process");
 
         // macro simplifying benchmark execution depending on distance type
-        macro_rules! run {
+        macro_rules! run_arroy {
+            ($D: ty, $n: expr) => {
+                arroy_bench::prepare_and_run::<$D, _>(
+                    &points,
+                    nb_trees,
+                    $n,
+                    sleep_between_chunks,
+                    memory,
+                    verbose,
+                    |time_to_index, env, database| {
+                        arroy_bench::run_scenarios(
+                            env,
+                            time_to_index,
+                            distance,
+                            $n,
+                            &search,
+                            &queries,
+                            &recall_tested,
+                            database,
+                        );
+                    },
+                )
+            };
+        }
+
+        // FIXME: 
+        macro_rules! run_hannoy {
             ($D: ty, $n: expr) => {
                 arroy_bench::prepare_and_run::<$D, _>(
                     &points,
@@ -265,18 +291,16 @@ fn main() {
 
         for &n in &number_of_chunks {
             match contender {
-                // qdrant
                 scenarios::ScenarioContender::Qdrant => println!("Qdrant is not supported yet"),
-
-                // arroy
                 scenarios::ScenarioContender::Arroy => match distance {
-                    scenarios::ScenarioDistance::Cosine => run!(Cosine, n),
-                    scenarios::ScenarioDistance::BqCosine => run!(BinaryQuantizedCosine, n),
-                    scenarios::ScenarioDistance::Euclidean => run!(Euclidean, n),
-                    scenarios::ScenarioDistance::BqEuclidean => run!(BinaryQuantizedEuclidean, n),
-                    scenarios::ScenarioDistance::Manhattan => run!(Manhattan, n),
-                    scenarios::ScenarioDistance::BqManhattan => run!(BinaryQuantizedManhattan, n),
-                },
+                                scenarios::ScenarioDistance::Cosine => run_arroy!(Cosine, n),
+                                scenarios::ScenarioDistance::BqCosine => run_arroy!(BinaryQuantizedCosine, n),
+                                scenarios::ScenarioDistance::Euclidean => run_arroy!(Euclidean, n),
+                                scenarios::ScenarioDistance::BqEuclidean => run_arroy!(BinaryQuantizedEuclidean, n),
+                                scenarios::ScenarioDistance::Manhattan => run_arroy!(Manhattan, n),
+                                scenarios::ScenarioDistance::BqManhattan => run_arroy!(BinaryQuantizedManhattan, n),
+                            },
+                scenarios::ScenarioContender::Hannoy => todo!(),
             }
         }
 
