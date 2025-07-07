@@ -55,6 +55,10 @@ struct Args {
     #[arg(long)]
     nb_trees: Option<usize>,
 
+    /// hannoy params
+    #[arg(long, default_value_t = 400)]
+    ef_construction: usize,
+
     /// These numbers correspond to the numbers of chunks that the dataset will be split into for indexing.
     ///
     /// Each number corresponds to a new indexation in x chunks. Use a comma to separate multiple features.
@@ -264,30 +268,6 @@ fn main() {
         }
 
         // FIXME: 
-        macro_rules! run_hannoy {
-            ($D: ty, $n: expr) => {
-                arroy_bench::prepare_and_run::<$D, _>(
-                    &points,
-                    nb_trees,
-                    $n,
-                    sleep_between_chunks,
-                    memory,
-                    verbose,
-                    |time_to_index, env, database| {
-                        arroy_bench::run_scenarios(
-                            env,
-                            time_to_index,
-                            distance,
-                            $n,
-                            &search,
-                            &queries,
-                            &recall_tested,
-                            database,
-                        );
-                    },
-                )
-            };
-        }
 
         for &n in &number_of_chunks {
             match contender {
