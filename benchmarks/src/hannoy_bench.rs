@@ -48,7 +48,8 @@ pub fn run_scenarios<D: Distance>(
     env: &heed::Env,
     time_to_index: &IndexingMetrics,
     distance: &ScenarioDistance,
-    queries: &[(&u32, &&[f32], Vec<u32>)],
+    search: &[&ScenarioSearch],
+    queries: &[(&u32, &&[f32], HashMap<ScenarioFiltering, (Option<RoaringBitmap>, Vec<u32>)>)],
     recall_tested: &[usize],
     database: hannoy::Database<D>,
 ) {
@@ -58,59 +59,64 @@ pub fn run_scenarios<D: Distance>(
     println!("Database size: {database_size:#.2}");
     println!("{time_to_index}");
 
-    let mut time_to_search = Duration::default();
-    let mut recalls = Vec::new();
-    for &number_fetched in recall_tested {
-        let (correctly_retrieved, duration) = queries
-            .par_iter()
-            .map(|(&id, target, relevants)| {
-                let relevants = relevants.get(..number_fetched).unwrap_or(relevants);
+    for ScenarioSearch { oversampling: _, filtering } in search {
+        let mut time_to_search = Duration::default();
+        let mut recalls = Vec::new();
+        for &number_fetched in recall_tested {
+            let (correctly_retrieved, duration) = queries
+                .par_iter()
+                .map(|(&id, target, relevants)| {
+                    let rtxn = env.read_txn().unwrap();
+                    let reader = hannoy::Reader::open(&rtxn, 0, database).unwrap();
 
-                let rtxn = env.read_txn().unwrap();
-                let reader = hannoy::Reader::open(&rtxn, 0, database).unwrap();
+                    let (candidates, relevants) = &relevants[filtering];
+                    // Only keep the top number fetched documents.
+                    let relevants = relevants.get(..number_fetched).unwrap_or(relevants);
 
-                // time the search
-                let now = std::time::Instant::now();
-                // FIXME: here's where we'd put a different ef_factor
-                let mut nns = reader.nns(number_fetched, number_fetched);
-                let hannoy_answer = nns.by_vector(&rtxn, target).unwrap();
-                let elapsed = now.elapsed();
+                    let now = std::time::Instant::now();
+                    let mut nns = reader.nns(number_fetched, 800);
 
-                assert!(
-                    hannoy_answer.len() == number_fetched,
-                    "requested: {number_fetched}, returned {}",
-                    hannoy_answer.len()
-                );
+                    // NOTE: by_item won't work here
+                    let arroy_answer = nns.by_vector(&rtxn, target).unwrap();
+                    let elapsed = now.elapsed();
 
-                let mut correctly_retrieved = Some(0);
-                for (id, _dist) in hannoy_answer {
-                    if relevants.contains(&id) {
-                        if let Some(cr) = &mut correctly_retrieved {
-                            *cr += 1;
+                    let mut correctly_retrieved = Some(0);
+                    for (id, _dist) in arroy_answer {
+                        if relevants.contains(&id) {
+                            if let Some(cr) = &mut correctly_retrieved {
+                                *cr += 1;
+                            }
+                        } else if let Some(cand) = candidates.as_ref() {
+                            // We set the counter to -1 if we return a filtered out candidated
+                            if !cand.contains(id) {
+                                correctly_retrieved = None;
+                            }
                         }
                     }
-                }
 
-                (correctly_retrieved, elapsed)
-            })
-            .reduce(
-                || (Some(0), Duration::default()),
-                |(aanswer, aduration), (banswer, bduration)| {
-                    (aanswer.zip(banswer).map(|(a, b)| a + b), aduration + bduration)
-                },
-            );
+                    (correctly_retrieved, elapsed)
+                })
+                .reduce(
+                    || (Some(0), Duration::default()),
+                    |(aanswer, aduration), (banswer, bduration)| {
+                        (aanswer.zip(banswer).map(|(a, b)| a + b), aduration + bduration)
+                    },
+                );
 
-        time_to_search += duration;
-        // If non-candidate documents are returned we show a recall of -1
-        let recall =
-            correctly_retrieved.map_or(-1.0, |cr| cr as f32 / (number_fetched as f32 * 100.0));
-        recalls.push(Recall(recall));
+            time_to_search += duration;
+            // If non-candidate documents are returned we show a recall of -1
+            let recall =
+                correctly_retrieved.map_or(-1.0, |cr| cr as f32 / (number_fetched as f32 * 100.0));
+            recalls.push(Recall(recall));
+        }
+
+        let filtered_percentage = filtering.to_ratio_f32() * 100.0;
+        println!(
+            "[hannoy]  {distance:16?} {recalls:?}, \
+                                    searched for: {time_to_search:02.2?}, \
+                                    searched in {filtered_percentage:#.2}%"
+        );
     }
-
-    println!(
-        "[hannoy]  {distance:16?}: {recalls:?}, \
-                    searched for: {time_to_search:02.2?}"
-    );
 }
 
 #[allow(clippy::too_many_arguments)]

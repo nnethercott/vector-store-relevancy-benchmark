@@ -5,8 +5,9 @@ use arroy::distances::{
     BinaryQuantizedCosine, BinaryQuantizedEuclidean, BinaryQuantizedManhattan, Cosine, Euclidean,
     Manhattan,
 };
+use hannoy;
 use benchmarks::scenarios::ScenarioSearch;
-use benchmarks::{arroy_bench, scenarios, MatLEView, RNG_SEED};
+use benchmarks::{arroy_bench, hannoy_bench, scenarios, MatLEView, RNG_SEED};
 use byte_unit::Byte;
 use clap::Parser;
 use enum_iterator::Sequence;
@@ -90,6 +91,7 @@ fn main() {
         datasets,
         count,
         nb_trees,
+        ef_construction,
         number_of_chunks,
         contenders,
         distances,
@@ -243,12 +245,10 @@ fn main() {
 
         // macro simplifying benchmark execution depending on distance type
         macro_rules! run_arroy {
-            ($D: ty, $n: expr) => {
+            ($D: ty) => {
                 arroy_bench::prepare_and_run::<$D, _>(
                     &points,
                     nb_trees,
-                    $n,
-                    sleep_between_chunks,
                     memory,
                     verbose,
                     |time_to_index, env, database| {
@@ -256,7 +256,6 @@ fn main() {
                             env,
                             time_to_index,
                             distance,
-                            $n,
                             &search,
                             &queries,
                             &recall_tested,
@@ -268,19 +267,44 @@ fn main() {
         }
 
         // FIXME: 
+        macro_rules! run_hannoy {
+            ($D: ty) => {
+                hannoy_bench::prepare_and_run::<$D, _>(
+                    &points,
+                    ef_construction,
+                    verbose,
+                    |time_to_index, env, database| {
+                        hannoy_bench::run_scenarios(
+                            env,
+                            time_to_index,
+                            distance,
+                            &search,
+                            &queries,
+                            &recall_tested,
+                            database,
+                        );
+                    },
+                )
+            };
+        }
 
-        for &n in &number_of_chunks {
-            match contender {
-                scenarios::ScenarioContender::Qdrant => println!("Qdrant is not supported yet"),
-                scenarios::ScenarioContender::Arroy => match distance {
-                                scenarios::ScenarioDistance::Cosine => run_arroy!(Cosine, n),
-                                scenarios::ScenarioDistance::BqCosine => run_arroy!(BinaryQuantizedCosine, n),
-                                scenarios::ScenarioDistance::Euclidean => run_arroy!(Euclidean, n),
-                                scenarios::ScenarioDistance::BqEuclidean => run_arroy!(BinaryQuantizedEuclidean, n),
-                                scenarios::ScenarioDistance::Manhattan => run_arroy!(Manhattan, n),
-                                scenarios::ScenarioDistance::BqManhattan => run_arroy!(BinaryQuantizedManhattan, n),
-                            },
-                scenarios::ScenarioContender::Hannoy => todo!(),
+        match contender {
+            scenarios::ScenarioContender::Qdrant => println!("Qdrant is not supported yet"),
+            scenarios::ScenarioContender::Arroy => match distance {
+                            scenarios::ScenarioDistance::Cosine => run_arroy!(Cosine),
+                            scenarios::ScenarioDistance::BqCosine => run_arroy!(BinaryQuantizedCosine),
+                            scenarios::ScenarioDistance::Euclidean => run_arroy!(Euclidean),
+                            scenarios::ScenarioDistance::BqEuclidean => run_arroy!(BinaryQuantizedEuclidean),
+                            scenarios::ScenarioDistance::Manhattan => run_arroy!(Manhattan),
+                            scenarios::ScenarioDistance::BqManhattan => run_arroy!(BinaryQuantizedManhattan),
+                        },
+            scenarios::ScenarioContender::Hannoy => match distance{
+                scenarios::ScenarioDistance::Cosine => run_hannoy!(hannoy::distances::Cosine),
+                scenarios::ScenarioDistance::BqCosine => run_hannoy!(hannoy::distances::BinaryQuantizedCosine),
+                scenarios::ScenarioDistance::Euclidean => run_hannoy!(hannoy::distances::Euclidean),
+                scenarios::ScenarioDistance::BqEuclidean => todo!(),
+                scenarios::ScenarioDistance::Manhattan => todo!(),
+                scenarios::ScenarioDistance::BqManhattan => todo!(),
             }
         }
 

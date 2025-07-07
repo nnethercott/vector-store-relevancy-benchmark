@@ -19,8 +19,6 @@ const TWENTY_HUNDRED_MIB: usize = 2000 * 1024 * 1024 * 1024;
 pub fn prepare_and_run<D, F>(
     points: &[(u32, &[f32])],
     nb_trees: Option<usize>,
-    number_of_chunks: usize,
-    sleep_between_chunks: usize,
     memory: usize,
     verbose: bool,
     execute: F,
@@ -47,9 +45,7 @@ pub fn prepare_and_run<D, F>(
         dimensions,
         memory,
         points,
-        number_of_chunks,
         nb_trees,
-        sleep_between_chunks,
         verbose,
     );
 
@@ -61,7 +57,6 @@ pub fn run_scenarios<D: Distance>(
     env: &heed::Env,
     time_to_index: &IndexingMetrics,
     distance: &ScenarioDistance,
-    number_of_chunks: usize,
     search: &[&ScenarioSearch],
     queries: &[(&u32, &&[f32], HashMap<ScenarioFiltering, (Option<RoaringBitmap>, Vec<u32>)>)],
     recall_tested: &[usize],
@@ -70,7 +65,7 @@ pub fn run_scenarios<D: Distance>(
     let database_size =
         Byte::from_u64(env.non_free_pages_size().unwrap()).get_appropriate_unit(UnitType::Binary);
 
-    println!("Database size: {database_size:#.2}, indexed in {number_of_chunks} chunks");
+    println!("Database size: {database_size:#.2}");
     println!("{time_to_index}");
 
     for ScenarioSearch { oversampling, filtering } in search {
@@ -145,13 +140,10 @@ fn load_into_arroy<D: arroy::Distance>(
     dimensions: usize,
     memory: usize,
     points: &[(ItemId, &[f32])],
-    number_of_chunks: usize,
     nb_trees: Option<usize>,
-    sleep_between_chunks: usize,
     verbose: bool,
 ) -> IndexingMetrics {
     let mut metrics = IndexingMetrics::new();
-    let avg_chunk_size = points.len() / number_of_chunks;
     let mut nb_vectors = 0;
     let (progress_sender, progress_receiver) = std::sync::mpsc::channel();
 
@@ -159,43 +151,37 @@ fn load_into_arroy<D: arroy::Distance>(
         std::thread::spawn(move || log_progress(progress_receiver));
     }
 
-    for points in points.chunks(avg_chunk_size) {
-        if sleep_between_chunks != 0 {
-            std::thread::sleep(Duration::from_secs(sleep_between_chunks as u64));
-        }
-        tracing::info!("Inserting chunk of size {} in arroy", points.len());
-        let mut wtxn = env.write_txn().unwrap();
-        metrics.start_insertion();
-        let writer = Writer::<D>::new(database, 0, dimensions);
-        for (i, vector) in points.iter() {
-            assert_eq!(vector.len(), dimensions);
-            writer.add_item(&mut wtxn, *i, vector).unwrap();
-        }
-        metrics.end_insertion();
-
-        tracing::info!("Starts building the trees");
-
-        let mut builder = writer.builder(rng);
-        if let Some(nb_trees) = nb_trees {
-            builder.n_trees(nb_trees);
-        }
-        if verbose {
-            builder.progress(|progress| progress_sender.send(progress).unwrap());
-        }
-        metrics.start_building();
-        builder.available_memory(memory).build(&mut wtxn).unwrap();
-        metrics.end_building();
-        wtxn.commit().unwrap();
-
-        let rtxn = env.read_txn().unwrap();
-        let reader = arroy::Reader::open(&rtxn, 0, database).unwrap();
-        metrics.new_nb_trees(reader.n_trees());
-        drop(rtxn);
-
-        nb_vectors += points.len();
-        metrics.new_nb_vectors(nb_vectors);
-        metrics.new_database_size(env.non_free_pages_size().unwrap() as usize);
+    let mut wtxn = env.write_txn().unwrap();
+    metrics.start_insertion();
+    let writer = Writer::<D>::new(database, 0, dimensions);
+    for (i, vector) in points.iter() {
+        assert_eq!(vector.len(), dimensions);
+        writer.add_item(&mut wtxn, *i, vector).unwrap();
     }
+    metrics.end_insertion();
+
+    tracing::info!("Starts building the trees");
+
+    let mut builder = writer.builder(rng);
+    if let Some(nb_trees) = nb_trees {
+        builder.n_trees(nb_trees);
+    }
+    if verbose {
+        builder.progress(|progress| progress_sender.send(progress).unwrap());
+    }
+    metrics.start_building();
+    builder.available_memory(memory).build(&mut wtxn).unwrap();
+    metrics.end_building();
+    wtxn.commit().unwrap();
+
+    let rtxn = env.read_txn().unwrap();
+    let reader = arroy::Reader::open(&rtxn, 0, database).unwrap();
+    metrics.new_nb_trees(reader.n_trees());
+    drop(rtxn);
+
+    nb_vectors += points.len();
+    metrics.new_nb_vectors(nb_vectors);
+    metrics.new_database_size(env.non_free_pages_size().unwrap() as usize);
 
     metrics.end();
     metrics
@@ -228,3 +214,4 @@ fn log_progress(recv: Receiver<WriterProgress>) {
         }
     }
 }
+

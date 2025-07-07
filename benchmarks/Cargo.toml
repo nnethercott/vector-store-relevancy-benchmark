@@ -8,6 +8,7 @@ anyhow = "1.0.86"
 # arroy = "0.6.1"
 # arroy = { git = "https://github.com/meilisearch/arroy", tag = "main" }
 arroy = { path = "../../arroy" }
+hannoy = { path = "../../hannoy"}
 byte-unit = "5.1.4"
 bytemuck = "1.16.1"
 clap = { version = "4.5.18", features = ["derive"] }
