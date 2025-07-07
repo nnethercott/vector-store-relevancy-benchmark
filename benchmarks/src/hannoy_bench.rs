@@ -1,9 +1,8 @@
+use core::fmt;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::Duration;
-
-use byte_unit::{Byte, UnitType};
 use hannoy::internals::{self, NodeCodec};
 use hannoy::{Database, Distance, ItemId, Writer};
 use heed::EnvOpenOptions;
@@ -11,9 +10,13 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use roaring::RoaringBitmap;
+use std::time::Instant;
+use arroy::distances::*;
+use byte_unit::rust_decimal::Decimal;
+use byte_unit::{Byte, Unit, UnitType};
 
 use crate::Recall;
-use crate::{scenarios::*, IndexingMetrics};
+use crate::scenarios::*;
 const TWENTY_HUNDRED_MIB: usize = 2000 * 1024 * 1024 * 1024;
 
 pub fn prepare_and_run<D, F>(
@@ -74,7 +77,7 @@ pub fn run_scenarios<D: Distance>(
                     let relevants = relevants.get(..number_fetched).unwrap_or(relevants);
 
                     let now = std::time::Instant::now();
-                    let mut nns = reader.nns(number_fetched, number_fetched);
+                    let mut nns = reader.nns(number_fetched, 25*number_fetched.min(1000));
 
                     // NOTE: by_item won't work here
                     let arroy_answer = nns.by_vector(&rtxn, target).unwrap();
@@ -163,4 +166,154 @@ fn load_into_hannoy<D: hannoy::Distance>(
 
     metrics.end();
     metrics
+}
+
+#[derive(Debug)]
+pub struct IndexingMetrics {
+    start: Instant,
+    end: Instant,
+    insert_durations: Vec<(Instant, Instant)>,
+    build_durations: Vec<(Instant, Instant)>,
+    nb_vectors: Vec<usize>,
+    database_size: Vec<usize>,
+}
+
+impl IndexingMetrics {
+    pub fn new() -> Self {
+        Self {
+            start: Instant::now(),
+            end: Instant::now(),
+            insert_durations: Vec::new(),
+            build_durations: Vec::new(),
+            nb_vectors: Vec::new(),
+            database_size: Vec::new(),
+        }
+    }
+
+    pub fn start_insertion(&mut self) {
+        self.insert_durations.push((Instant::now(), Instant::now()));
+    }
+
+    pub fn end_insertion(&mut self) {
+        self.insert_durations.last_mut().unwrap().1 = Instant::now();
+    }
+
+    pub fn start_building(&mut self) {
+        self.build_durations.push((Instant::now(), Instant::now()));
+    }
+
+    pub fn end_building(&mut self) {
+        self.build_durations.last_mut().unwrap().1 = Instant::now();
+    }
+
+    pub fn new_nb_vectors(&mut self, nb_vectors: usize) {
+        self.nb_vectors.push(nb_vectors);
+    }
+
+    pub fn new_database_size(&mut self, size: usize) {
+        self.database_size.push(size);
+    }
+
+    pub fn end(&mut self) {
+        self.end = Instant::now();
+    }
+}
+
+impl fmt::Display for IndexingMetrics {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Total time to index: {:.2?} (", self.end.duration_since(self.start))?;
+
+        for (idx, ((insert_start, insert_end), (build_start, build_end))) in
+            self.insert_durations.iter().zip(self.build_durations.iter()).enumerate()
+        {
+            if idx != 0 {
+                write!(f, " + ")?;
+            }
+            write!(
+                f,
+                "{:.2?}",
+                insert_end.duration_since(*insert_start) + build_end.duration_since(*build_start)
+            )?;
+        }
+        writeln!(f, ")")?;
+
+        // First step is to format all the lists in a vector of strings
+
+        let vectors = self.nb_vectors.iter().map(|v| format!("{}", v)).collect::<Vec<_>>();
+        let insertions = self
+            .insert_durations
+            .iter()
+            .map(|(insert_start, insert_end)| {
+                format!("{:.2?}", insert_end.duration_since(*insert_start))
+            })
+            .collect::<Vec<_>>();
+        let builds = self
+            .build_durations
+            .iter()
+            .map(|(build_start, build_end)| {
+                format!("{:.2?}", build_end.duration_since(*build_start))
+            })
+            .collect::<Vec<_>>();
+        let db_size = self
+            .database_size
+            .iter()
+            .map(|v| {
+                format!(
+                    "{:.2}",
+                    Byte::from_decimal_with_unit(Decimal::from(*v), Unit::B)
+                        .unwrap()
+                        .get_appropriate_unit(UnitType::Binary)
+                )
+            })
+            .collect::<Vec<_>>();
+
+        // Then we can retrieve the max length of each column in the list to pretty print the table later
+        let max_lengths = vectors
+            .iter()
+            .zip(insertions.iter())
+            .zip(builds.iter())
+            .zip(db_size.iter())
+            .map(|(((v, i), b), d)| {
+                [v.len(), i.len(), b.len(), d.len()].into_iter().max().unwrap()
+            })
+            .collect::<Vec<_>>();
+
+        write!(f, "  => Vectors:    ")?;
+        for (idx, (nb_vectors, max_length)) in vectors.iter().zip(max_lengths.iter()).enumerate() {
+            if idx != 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{nb_vectors:>max_length$}")?;
+        }
+        writeln!(f, "")?;
+
+        write!(f, "  => Insertions: ")?;
+        for (idx, (insert, max_length)) in insertions.iter().zip(max_lengths.iter()).enumerate() {
+            if idx != 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{insert:>max_length$}")?;
+        }
+        writeln!(f, "")?;
+
+        write!(f, "  => Builds:     ")?;
+        for (idx, (build, max_length)) in builds.iter().zip(max_lengths.iter()).enumerate() {
+            if idx != 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{build:>max_length$}")?;
+        }
+        writeln!(f, "")?;
+
+        write!(f, "  => Db size:    ")?;
+        for (idx, (database_size, max_length)) in db_size.iter().zip(max_lengths.iter()).enumerate()
+        {
+            if idx != 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{database_size:>max_length$}")?;
+        }
+
+        Ok(())
+    }
 }
