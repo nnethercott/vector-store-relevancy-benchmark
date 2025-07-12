@@ -34,7 +34,7 @@ pub fn prepare_and_run<D, F>(
     let env =
         unsafe { EnvOpenOptions::new().map_size(TWENTY_HUNDRED_MIB).open(dir.path()) }.unwrap();
 
-    let mut hannoy_seed = StdRng::seed_from_u64(13);
+    let mut hannoy_seed = StdRng::seed_from_u64(42);
     let mut wtxn = env.write_txn().unwrap();
     let database =
         env.create_database::<internals::KeyCodec, NodeCodec<D>>(&mut wtxn, None).unwrap();
@@ -77,9 +77,8 @@ pub fn run_scenarios<D: Distance>(
                     let relevants = relevants.get(..number_fetched).unwrap_or(relevants);
 
                     let now = std::time::Instant::now();
-                    let mut nns = reader.nns(number_fetched, 25*number_fetched.min(1000));
-
-                    // NOTE: by_item won't work here
+                    // let mut nns = reader.nns(number_fetched, 1*number_fetched.min(1000));
+                    let mut nns = reader.nns(number_fetched, 100);
                     let arroy_answer = nns.by_vector(&rtxn, target).unwrap();
                     let elapsed = now.elapsed();
 
@@ -106,10 +105,10 @@ pub fn run_scenarios<D: Distance>(
                     },
                 );
 
-            time_to_search += duration;
+            time_to_search += duration/(queries.len() as u32);
             // If non-candidate documents are returned we show a recall of -1
             let recall =
-                correctly_retrieved.map_or(-1.0, |cr| cr as f32 / (number_fetched as f32 * 100.0));
+                correctly_retrieved.map_or(-1.0, |cr| cr as f32 / (number_fetched as f32 * (queries.len() as f32)));
             recalls.push(Recall(recall));
         }
 
@@ -154,10 +153,6 @@ fn load_into_hannoy<D: hannoy::Distance>(
         builder.ef_construction(ef_construction).build(&mut wtxn).unwrap();
         metrics.end_building();
         wtxn.commit().unwrap();
-
-        let rtxn = env.read_txn().unwrap();
-        let reader = hannoy::Reader::open(&rtxn, 0, database).unwrap();
-        drop(rtxn);
 
         nb_vectors += points.len();
         metrics.new_nb_vectors(nb_vectors);

@@ -52,6 +52,10 @@ struct Args {
     #[arg(long, default_value_t = 10_000, value_parser = parse_number_with_underscores)]
     count: usize,
 
+    /// Number of runs to measure 
+    #[arg(long, default_value_t = 100, value_parser = parse_number_with_underscores)]
+    n_runs: usize,
+
     /// Set the number of trees to generate to a fixed value, if not specified the number of trees will be automatically computed.
     #[arg(long)]
     nb_trees: Option<usize>,
@@ -90,6 +94,7 @@ fn main() {
     let Args {
         datasets,
         count,
+        n_runs,
         nb_trees,
         ef_construction,
         number_of_chunks,
@@ -181,7 +186,7 @@ fn main() {
             Vec::new()
         } else {
             let mut rng = StdRng::seed_from_u64(RNG_SEED);
-            (0..100)
+            (0..n_runs)
                 .map(|_| points.choose(&mut rng).unwrap())
                 .map(|(id, target)| {
                     let mut points = points.clone();

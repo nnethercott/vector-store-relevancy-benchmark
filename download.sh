@@ -41,15 +41,15 @@ cargo build --release -p parquet2mat
 max_parallel=10
 
 # Call the function to download parquet files in parallel
-output=assets/datacomp-small.mat
-if [ ! -f $output ]; then
-    cat datacomp-small-with-text-embeddings.urls | xargs -n 1 -P $max_parallel -I {} bash -c 'download_file {}'
-    cargo run --release -p parquet2mat -- \
-        tmp-assets/* \
-        --embedding-name 'clip_l14_text_embedding' \
-        --output $output
-    rm -rf tmp-assets/*
-fi
+# output=assets/datacomp-small.mat
+# if [ ! -f $output ]; then
+#     cat datacomp-small-with-text-embeddings.urls | xargs -n 1 -P $max_parallel -I {} bash -c 'download_file {}'
+#     cargo run --release -p parquet2mat -- \
+#         tmp-assets/* \
+#         --embedding-name 'clip_l14_text_embedding' \
+#         --output $output
+#     rm -rf tmp-assets/*
+# fi
 
 # Call the function to download parquet files in parallel
 output=assets/db-pedia-OpenAI-text-embedding-ada-002.mat
@@ -63,26 +63,26 @@ if [ ! -f $output ]; then
 fi
 
 # Call the function to download parquet files in parallel
-output=assets/db-pedia-OpenAI-text-embedding-3-large.mat
-if [ ! -f $output ]; then
-    cat dbpedia-3072.urls | xargs -n 1 -P $max_parallel -I {} bash -c 'download_file {}'
-    cargo run --release -p parquet2mat -- \
-        tmp-assets/* \
-        --embedding-name 'text-embedding-3-large-3072-embedding' \
-        --output $output
-    rm -rf tmp-assets/*
-fi
-
-# Call the function to download parquet files in parallel
-output=assets/wikipedia-22-12-simple-embeddings.mat
-if [ ! -f $output ]; then
-    cat wikipedia-768.urls | xargs -n 1 -P $max_parallel -I {} bash -c 'download_file {}'
-    cargo run --release -p parquet2mat -- \
-        tmp-assets/* \
-        --embedding-name 'emb' \
-        --output $output
-    rm -rf tmp-assets/*
-fi
+# output=assets/db-pedia-OpenAI-text-embedding-3-large.mat
+# if [ ! -f $output ]; then
+#     cat dbpedia-3072.urls | xargs -n 1 -P $max_parallel -I {} bash -c 'download_file {}'
+#     cargo run --release -p parquet2mat -- \
+#         tmp-assets/* \
+#         --embedding-name 'text-embedding-3-large-3072-embedding' \
+#         --output $output
+#     rm -rf tmp-assets/*
+# fi
+#
+# # Call the function to download parquet files in parallel
+# output=assets/wikipedia-22-12-simple-embeddings.mat
+# if [ ! -f $output ]; then
+#     cat wikipedia-768.urls | xargs -n 1 -P $max_parallel -I {} bash -c 'download_file {}'
+#     cargo run --release -p parquet2mat -- \
+#         tmp-assets/* \
+#         --embedding-name 'emb' \
+#         --output $output
+#     rm -rf tmp-assets/*
+# fi
 
 # output=assets/hn-posts.mat
 # if [ ! -f $output ]; then

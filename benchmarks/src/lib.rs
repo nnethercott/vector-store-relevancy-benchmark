@@ -15,7 +15,7 @@ use byte_unit::{Byte, Unit, UnitType};
 pub use dataset::*;
 use qdrant_client::qdrant::quantization_config;
 
-pub const RNG_SEED: u64 = 38;
+pub const RNG_SEED: u64 = 42;
 
 /// A generalist distance trait that contains the informations required to configure every engine
 pub trait Distance {
