@@ -3,14 +3,14 @@ use std::fmt::Write as _;
 
 use arroy::distances::{
     BinaryQuantizedCosine, BinaryQuantizedEuclidean, BinaryQuantizedManhattan, Cosine, Euclidean,
-    Manhattan,
+    Hamming, Manhattan,
 };
-use hannoy;
 use benchmarks::scenarios::ScenarioSearch;
 use benchmarks::{arroy_bench, hannoy_bench, scenarios, MatLEView, RNG_SEED};
 use byte_unit::Byte;
 use clap::Parser;
 use enum_iterator::Sequence;
+use hannoy;
 use itertools::{iproduct, Itertools};
 use ordered_float::OrderedFloat;
 use rand::rngs::StdRng;
@@ -52,7 +52,7 @@ struct Args {
     #[arg(long, default_value_t = 10_000, value_parser = parse_number_with_underscores)]
     count: usize,
 
-    /// Number of runs to measure 
+    /// Number of runs to measure
     #[arg(long, default_value_t = 100, value_parser = parse_number_with_underscores)]
     n_runs: usize,
 
@@ -209,6 +209,9 @@ fn main() {
                         scenarios::ScenarioDistance::BqManhattan => OrderedFloat(
                             benchmarks::distance::<BinaryQuantizedManhattan>(target, v),
                         ),
+                        scenarios::ScenarioDistance::Hamming => {
+                            OrderedFloat(benchmarks::distance::<Hamming>(target, v))
+                        }
                     });
 
                     // We collect the different filtered versions here.
@@ -271,7 +274,7 @@ fn main() {
             };
         }
 
-        // FIXME: 
+        // FIXME:
         macro_rules! run_hannoy {
             ($D: ty) => {
                 hannoy_bench::prepare_and_run::<$D, _>(
@@ -294,23 +297,26 @@ fn main() {
         }
 
         match contender {
-            scenarios::ScenarioContender::Qdrant => println!("Qdrant is not supported yet"),
             scenarios::ScenarioContender::Arroy => match distance {
-                            scenarios::ScenarioDistance::Cosine => run_arroy!(Cosine),
-                            scenarios::ScenarioDistance::BqCosine => run_arroy!(BinaryQuantizedCosine),
-                            scenarios::ScenarioDistance::Euclidean => run_arroy!(Euclidean),
-                            scenarios::ScenarioDistance::BqEuclidean => run_arroy!(BinaryQuantizedEuclidean),
-                            scenarios::ScenarioDistance::Manhattan => run_arroy!(Manhattan),
-                            scenarios::ScenarioDistance::BqManhattan => run_arroy!(BinaryQuantizedManhattan),
-                        },
-            scenarios::ScenarioContender::Hannoy => match distance{
+                scenarios::ScenarioDistance::Cosine => run_arroy!(Cosine),
+                scenarios::ScenarioDistance::BqCosine => run_arroy!(BinaryQuantizedCosine),
+                scenarios::ScenarioDistance::Euclidean => run_arroy!(Euclidean),
+                scenarios::ScenarioDistance::BqEuclidean => run_arroy!(BinaryQuantizedEuclidean),
+                scenarios::ScenarioDistance::Manhattan => run_arroy!(Manhattan),
+                scenarios::ScenarioDistance::BqManhattan => run_arroy!(BinaryQuantizedManhattan),
+                scenarios::ScenarioDistance::Hamming => run_arroy!(Hamming),
+            },
+            scenarios::ScenarioContender::Hannoy => match distance {
                 scenarios::ScenarioDistance::Cosine => run_hannoy!(hannoy::distances::Cosine),
-                scenarios::ScenarioDistance::BqCosine => run_hannoy!(hannoy::distances::BinaryQuantizedCosine),
+                scenarios::ScenarioDistance::BqCosine => {
+                                run_hannoy!(hannoy::distances::BinaryQuantizedCosine)
+                            }
                 scenarios::ScenarioDistance::Euclidean => run_hannoy!(hannoy::distances::Euclidean),
-                scenarios::ScenarioDistance::BqEuclidean => todo!(),
-                scenarios::ScenarioDistance::Manhattan => todo!(),
-                scenarios::ScenarioDistance::BqManhattan => todo!(),
-            }
+                scenarios::ScenarioDistance::BqEuclidean => run_hannoy!(hannoy::distances::BinaryQuantizedEuclidean),
+                scenarios::ScenarioDistance::Manhattan => run_hannoy!(hannoy::distances::Manhattan),
+                scenarios::ScenarioDistance::BqManhattan => run_hannoy!(hannoy::distances::BinaryQuantizedManhattan),
+                scenarios::ScenarioDistance::Hamming => run_hannoy!(hannoy::distances::Hamming),
+            },
         }
 
         println!();

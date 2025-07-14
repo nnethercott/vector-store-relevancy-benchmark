@@ -3,7 +3,6 @@
 pub mod arroy_bench;
 pub mod hannoy_bench;
 mod dataset;
-mod qdrant_bench;
 pub mod scenarios;
 
 use std::fmt;
@@ -13,34 +12,26 @@ use arroy::distances::*;
 use byte_unit::rust_decimal::Decimal;
 use byte_unit::{Byte, Unit, UnitType};
 pub use dataset::*;
-use qdrant_client::qdrant::quantization_config;
 
 pub const RNG_SEED: u64 = 42;
 
 /// A generalist distance trait that contains the informations required to configure every engine
 pub trait Distance {
     const BINARY_QUANTIZED: bool;
-    const QDRANT_DISTANCE: qdrant_client::qdrant::Distance;
     type ArroyDistance: arroy::Distance;
 
     fn name() -> &'static str;
-    fn qdrant_quantization_config() -> quantization_config::Quantization;
     fn real_distance(a: &[f32], b: &[f32]) -> f32;
 }
 
 macro_rules! arroy_distance {
-    ($distance:ty => real: $real:ident, qdrant: $qdrant:ident, bq: $bq:expr) => {
+    ($distance:ty => real: $real:ident, bq: $bq:expr) => {
         impl Distance for $distance {
             const BINARY_QUANTIZED: bool = $bq;
-            const QDRANT_DISTANCE: qdrant_client::qdrant::Distance =
-                qdrant_client::qdrant::Distance::$qdrant;
             type ArroyDistance = $distance;
 
             fn name() -> &'static str {
                 stringify!($distance)
-            }
-            fn qdrant_quantization_config() -> quantization_config::Quantization {
-                qdrant_client::qdrant::BinaryQuantization::default().into()
             }
             fn real_distance(a: &[f32], b: &[f32]) -> f32 {
                 let a = ndarray::aview1(a);
@@ -51,13 +42,30 @@ macro_rules! arroy_distance {
     };
 }
 
-arroy_distance!(BinaryQuantizedCosine => real: cosine, qdrant: Cosine, bq: true);
-arroy_distance!(Cosine =>  real: cosine, qdrant: Cosine, bq: false);
-arroy_distance!(BinaryQuantizedEuclidean => real: euclidean, qdrant: Euclid, bq: true);
-arroy_distance!(Euclidean => real: euclidean, qdrant: Euclid, bq: false);
-arroy_distance!(BinaryQuantizedManhattan => real: manhattan, qdrant: Manhattan, bq: true);
-arroy_distance!(Manhattan => real: manhattan, qdrant: Manhattan, bq: false);
+arroy_distance!(BinaryQuantizedCosine => real: cosine, bq: true);
+arroy_distance!(Cosine =>  real: cosine, bq: false);
+arroy_distance!(BinaryQuantizedEuclidean => real: euclidean, bq: true);
+arroy_distance!(Euclidean => real: euclidean, bq: false);
+arroy_distance!(BinaryQuantizedManhattan => real: manhattan, bq: true);
+arroy_distance!(Manhattan => real: manhattan, bq: false);
 // arroy_distance!(DotProduct => real: dot, qdrant: Dot);
+impl Distance for Hamming {
+    const BINARY_QUANTIZED: bool = false;
+    type ArroyDistance = Hamming;
+
+    fn name() -> &'static str {
+        stringify!($distance)
+    }
+    fn real_distance(a: &[f32], b: &[f32]) -> f32 {
+        // manually quantize
+        let a: Vec<f32> = a.iter().map(|&val| if val>0.0 {1.0} else {0.0}).collect();
+        let b: Vec<f32> = b.iter().map(|&val| if val>0.0 {1.0} else {0.0}).collect();
+
+        let a = ndarray::aview1(&a);
+        let b = ndarray::aview1(&b);
+        fast_distances::hamming(&a, &b) as f32
+    }
+}
 
 pub fn distance<D: crate::Distance>(left: &[f32], right: &[f32]) -> f32 {
     D::real_distance(left, right)

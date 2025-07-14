@@ -53,7 +53,6 @@ impl From<Dataset> for MatLEView<f32> {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Sequence)]
 pub enum ScenarioContender {
-    Qdrant,
     Arroy,
     Hannoy,
     // Typesense,
@@ -65,6 +64,7 @@ pub enum ScenarioDistance {
     BqCosine,
     Euclidean,
     BqEuclidean,
+    Hamming,
     Manhattan,
     BqManhattan,
 }
