@@ -118,8 +118,8 @@ pub fn run_scenarios<D: Distance>(
 
             time_to_search += duration / (queries.len() as u32);
             // If non-candidate documents are returned we show a recall of -1
-            let recall =
-                correctly_retrieved.map_or(-1.0, |cr| cr as f32 / (number_fetched as f32 * (queries.len() as f32)));
+            let recall = correctly_retrieved
+                .map_or(-1.0, |cr| cr as f32 / (number_fetched as f32 * (queries.len() as f32)));
             recalls.push(Recall(recall));
         }
 

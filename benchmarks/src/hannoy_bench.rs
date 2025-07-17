@@ -1,8 +1,7 @@
+use arroy::distances::*;
+use byte_unit::rust_decimal::Decimal;
+use byte_unit::{Byte, Unit, UnitType};
 use core::fmt;
-use std::collections::HashMap;
-use std::sync::atomic::Ordering;
-use std::sync::mpsc::{Receiver, RecvTimeoutError};
-use std::time::Duration;
 use hannoy::internals::{self, NodeCodec};
 use hannoy::{Database, Distance, ItemId, Writer};
 use heed::EnvOpenOptions;
@@ -10,13 +9,14 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use roaring::RoaringBitmap;
+use std::collections::HashMap;
+use std::sync::atomic::Ordering;
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
+use std::time::Duration;
 use std::time::Instant;
-use arroy::distances::*;
-use byte_unit::rust_decimal::Decimal;
-use byte_unit::{Byte, Unit, UnitType};
 
-use crate::Recall;
 use crate::scenarios::*;
+use crate::Recall;
 const TWENTY_HUNDRED_MIB: usize = 2000 * 1024 * 1024 * 1024;
 
 pub fn prepare_and_run<D, F>(
@@ -77,13 +77,13 @@ pub fn run_scenarios<D: Distance>(
                     let relevants = relevants.get(..number_fetched).unwrap_or(relevants);
 
                     let now = std::time::Instant::now();
-                    // let mut nns = reader.nns(number_fetched, 1*number_fetched.min(1000));
-                    let mut nns = reader.nns(number_fetched, 100);
-                    let arroy_answer = nns.by_vector(&rtxn, target).unwrap();
+                    let mut nns = reader.nns(number_fetched, 5 * number_fetched.min(100));
+                    // let mut nns = reader.nns(number_fetched, 100);
+                    let hannoy_answer = nns.by_vector(&rtxn, target).unwrap();
                     let elapsed = now.elapsed();
 
                     let mut correctly_retrieved = Some(0);
-                    for (id, _dist) in arroy_answer {
+                    for (id, _dist) in hannoy_answer {
                         if relevants.contains(&id) {
                             if let Some(cr) = &mut correctly_retrieved {
                                 *cr += 1;
@@ -105,10 +105,10 @@ pub fn run_scenarios<D: Distance>(
                     },
                 );
 
-            time_to_search += duration/(queries.len() as u32);
+            time_to_search += duration / (queries.len() as u32);
             // If non-candidate documents are returned we show a recall of -1
-            let recall =
-                correctly_retrieved.map_or(-1.0, |cr| cr as f32 / (number_fetched as f32 * (queries.len() as f32)));
+            let recall = correctly_retrieved
+                .map_or(-1.0, |cr| cr as f32 / (number_fetched as f32 * (queries.len() as f32)));
             recalls.push(Recall(recall));
         }
 
@@ -131,33 +131,30 @@ fn load_into_hannoy<D: hannoy::Distance>(
     ef_construction: usize,
 ) -> IndexingMetrics {
     let mut metrics = IndexingMetrics::new();
-    let avg_chunk_size = points.len() / 1;
     let mut nb_vectors = 0;
 
-    for points in points.chunks(avg_chunk_size) {
-        tracing::info!("Inserting chunk of size {} in arroy", points.len());
-        let mut wtxn = env.write_txn().unwrap();
-        metrics.start_insertion();
-        let writer = Writer::<D>::new(database, 0, dimensions);
-        for (i, vector) in points.iter() {
-            assert_eq!(vector.len(), dimensions);
-            writer.add_item(&mut wtxn, *i, vector).unwrap();
-        }
-        metrics.end_insertion();
-
-        tracing::info!("Starts building the trees");
-
-        let mut builder = writer.builder(rng);
-
-        metrics.start_building();
-        builder.ef_construction(ef_construction).build(&mut wtxn).unwrap();
-        metrics.end_building();
-        wtxn.commit().unwrap();
-
-        nb_vectors += points.len();
-        metrics.new_nb_vectors(nb_vectors);
-        metrics.new_database_size(env.non_free_pages_size().unwrap() as usize);
+    tracing::info!("Inserting chunk of size {} in arroy", points.len());
+    let mut wtxn = env.write_txn().unwrap();
+    metrics.start_insertion();
+    let writer = Writer::<D>::new(database, 0, dimensions);
+    for (i, vector) in points.iter() {
+        assert_eq!(vector.len(), dimensions);
+        writer.add_item(&mut wtxn, *i, vector).unwrap();
     }
+    metrics.end_insertion();
+
+    tracing::info!("Starts building the trees");
+
+    let mut builder = writer.builder(rng);
+
+    metrics.start_building();
+    builder.ef_construction(ef_construction).build::<16, 32>(&mut wtxn).unwrap();
+    metrics.end_building();
+    wtxn.commit().unwrap();
+
+    nb_vectors += points.len();
+    metrics.new_nb_vectors(nb_vectors);
+    metrics.new_database_size(env.non_free_pages_size().unwrap() as usize);
 
     metrics.end();
     metrics
@@ -268,9 +265,7 @@ impl fmt::Display for IndexingMetrics {
             .zip(insertions.iter())
             .zip(builds.iter())
             .zip(db_size.iter())
-            .map(|(((v, i), b), d)| {
-                [v.len(), i.len(), b.len(), d.len()].into_iter().max().unwrap()
-            })
+            .map(|(((v, i), b), d)| [v.len(), i.len(), b.len(), d.len()].into_iter().max().unwrap())
             .collect::<Vec<_>>();
 
         write!(f, "  => Vectors:    ")?;
