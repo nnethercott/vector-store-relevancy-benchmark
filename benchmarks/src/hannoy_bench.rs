@@ -78,7 +78,7 @@ pub fn run_scenarios<D: Distance>(
 
                     let now = std::time::Instant::now();
                     // let mut nns = reader.nns(number_fetched, 1*number_fetched.min(1000));
-                    let mut nns = reader.nns(number_fetched, 100);
+                    let mut nns = reader.nns(number_fetched, 200);
                     let arroy_answer = nns.by_vector(&rtxn, target).unwrap();
                     let elapsed = now.elapsed();
 
