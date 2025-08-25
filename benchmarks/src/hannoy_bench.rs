@@ -89,8 +89,8 @@ pub fn run_scenarios<D: Distance>(
                     let relevants = relevants.get(..number_fetched).unwrap_or(relevants);
 
                     let now = std::time::Instant::now();
-                    let mut nns = reader.nns(number_fetched, 5 * number_fetched.min(100));
-                    let hannoy_answer = nns.by_vector(&rtxn, target).unwrap();
+                    let mut nns = reader.nns(number_fetched);
+                    let hannoy_answer = nns.ef_search(5 * number_fetched.min(100)).by_vector(&rtxn, target).unwrap();
                     let elapsed = now.elapsed();
 
                     let mut correctly_retrieved = Some(0);
@@ -176,13 +176,12 @@ fn load_into_hannoy<D: hannoy::Distance>(
             // builder.progress(|progress| progress_sender.send(progress).unwrap());
         }
         metrics.start_building();
-        builder.available_memory(memory).build::<16, 32>(&mut wtxn).unwrap();
+        // builder.available_memory(memory).build::<16, 32>(&mut wtxn).unwrap();
         metrics.end_building();
         wtxn.commit().unwrap();
 
         let rtxn = env.read_txn().unwrap();
         let reader = hannoy::Reader::open(&rtxn, 0, database).unwrap();
-        metrics.new_nb_trees(reader.n_trees());
         drop(rtxn);
 
         nb_vectors += points.len();
